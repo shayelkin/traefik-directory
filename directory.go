@@ -223,7 +223,7 @@ func fetchPage[T any](ctx context.Context, client *http.Client, base, path, page
 	if err != nil {
 		return nil, "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, "", fmt.Errorf("%s: unexpected status %s", path, resp.Status)
 	}

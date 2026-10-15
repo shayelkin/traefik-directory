@@ -36,7 +36,7 @@ func TestRunDrainsInFlightRequestsOnShutdown(t *testing.T) {
 			res <- result{err: err}
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		b, err := io.ReadAll(resp.Body)
 		res <- result{string(b), err}
 	}()
@@ -57,7 +57,7 @@ func TestRunReturnsServeError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ln.Close()
+	_ = ln.Close()
 	if err := run(t.Context(), &http.Server{}, ln); err == nil {
 		t.Error("expected error from closed listener")
 	}

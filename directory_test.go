@@ -409,7 +409,7 @@ func TestFetchAllPaginates(t *testing.T) {
 		} else {
 			w.Header().Set("X-Next-Page", "1")
 		}
-		fmt.Fprintf(w, `[{"name":"p%d"}]`, n)
+		_, _ = fmt.Fprintf(w, `[{"name":"p%d"}]`, n)
 	})
 	got, err := fetchAll[router](t.Context(), srv.Client(), srv.URL, "/api/http/routers")
 	if err != nil || len(got) != 3 || got[2].Name != "p3" {
@@ -438,7 +438,7 @@ func TestHandler(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	b, _ := io.ReadAll(resp.Body)
 	body := string(b)
 
@@ -460,7 +460,7 @@ func TestHandler(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	head.Body.Close()
+	_ = head.Body.Close()
 	if head.StatusCode != 200 {
 		t.Errorf("HEAD: %d", head.StatusCode)
 	}
@@ -469,7 +469,7 @@ func TestHandler(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	post.Body.Close()
+	_ = post.Body.Close()
 	if post.StatusCode != http.StatusMethodNotAllowed {
 		t.Errorf("POST: %d", post.StatusCode)
 	}
@@ -478,7 +478,7 @@ func TestHandler(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nf.Body.Close()
+	_ = nf.Body.Close()
 	if nf.StatusCode != 404 {
 		t.Errorf("/nope: %d", nf.StatusCode)
 	}
