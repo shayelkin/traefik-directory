@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -26,10 +27,11 @@ const (
 )
 
 type config struct {
-	APIURL      string
-	Listen      string
-	EntryPoints []string
-	DefaultHost string
+	APIURL        string
+	Listen        string
+	EntryPoints   []string
+	DefaultHost   string
+	ExcludeRoutes *regexp.Regexp
 }
 
 func parseAPIURL(raw string) (string, error) {
@@ -61,6 +63,13 @@ func configFromEnv(get func(string) string) (config, error) {
 		if ep = strings.TrimSpace(ep); ep != "" {
 			cfg.EntryPoints = append(cfg.EntryPoints, ep)
 		}
+	}
+	if pattern := get("EXCLUDE_ROUTES"); pattern != "" {
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			return config{}, fmt.Errorf("EXCLUDE_ROUTES must be a valid regular expression: %w", err)
+		}
+		cfg.ExcludeRoutes = re
 	}
 	if cfg.DefaultHost != "" {
 		if _, _, err := splitAuthority(cfg.DefaultHost); err != nil {
@@ -159,7 +168,7 @@ func pickEntryPoint(r router, allow map[string]bool, ports map[string]string) (s
 	return first, found
 }
 
-func buildTiles(routers []router, eps []entryPoint, allowed []string, defaultHost string) []tile {
+func buildTiles(routers []router, eps []entryPoint, allowed []string, defaultHost string, exclude *regexp.Regexp) []tile {
 	allow := make(map[string]bool, len(allowed))
 	for _, a := range allowed {
 		allow[a] = true
@@ -172,6 +181,9 @@ func buildTiles(routers []router, eps []entryPoint, allowed []string, defaultHos
 	var tiles []tile
 	for _, r := range routers {
 		if r.Status == "disabled" {
+			continue
+		}
+		if exclude != nil && exclude.MatchString(r.Name) {
 			continue
 		}
 		name, ok := pickEntryPoint(r, allow, ports)
@@ -294,7 +306,7 @@ func newHandler(cfg config, client *http.Client) http.Handler {
 			data.Err = "Unable to query the Traefik API."
 			status = http.StatusBadGateway
 		} else {
-			data.Tiles = buildTiles(routers, eps, cfg.EntryPoints, cfg.DefaultHost)
+			data.Tiles = buildTiles(routers, eps, cfg.EntryPoints, cfg.DefaultHost, cfg.ExcludeRoutes)
 		}
 
 		var buf bytes.Buffer

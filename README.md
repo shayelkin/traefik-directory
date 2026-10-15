@@ -15,6 +15,7 @@ All of the configuration is set through environment variables:
 | `TRAEFIK_API_URL` | `http://localhost:8080` | Base URL of the Traefik API                                              |
 | `LISTEN_ADDR`     | `:8081`                 | Address the service listens on                                           |
 | `DEFAULT_HOST`    | (unset)                 | Bare host (optionally `host:port`) used to link path-only routers        |
+| `EXCLUDE_ROUTES`  | (unset)                 | Regexp; routers whose full name (e.g. `app@docker`) matches are hidden   |
 
 **Important:** Traefik's API must be enabled, e.g. `--api.insecure=true` or an entrypoint/router exposing `api@internal`.
 

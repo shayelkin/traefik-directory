@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -119,7 +120,7 @@ func TestBuildTiles(t *testing.T) {
 	}
 	eps := []entryPoint{{"web", ":80"}, {"websecure", ":443"}, {"internal", ":9000"}, {"alt", ":8443"}}
 
-	got := buildTiles(routers, eps, []string{"web", "websecure", "alt"}, "")
+	got := buildTiles(routers, eps, []string{"web", "websecure", "alt"}, "", nil)
 	want := []tile{
 		{"(unnamed)", "", ""},
 		{"a", "a.com", "https://a.com"},
@@ -146,8 +147,8 @@ func TestBuildTilesTieBreak(t *testing.T) {
 		return rs
 	}
 	eps := []entryPoint{{"web", ":80"}}
-	a := buildTiles(mk("A", "a"), eps, []string{"web"}, "")
-	b := buildTiles(mk("a", "A"), eps, []string{"web"}, "")
+	a := buildTiles(mk("A", "a"), eps, []string{"web"}, "", nil)
+	b := buildTiles(mk("a", "A"), eps, []string{"web"}, "", nil)
 	if !slices.Equal(a, b) || a[0].Title != "A" {
 		t.Errorf("order not deterministic: %v vs %v", a, b)
 	}
@@ -170,7 +171,7 @@ func TestEntryPointChoiceIsOrderIndependent(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := buildTiles([]router{{Name: "a", Rule: "Host(`a.com`)", TLS: c.tls, EntryPoints: c.eps}}, eps, allowed, "")
+			got := buildTiles([]router{{Name: "a", Rule: "Host(`a.com`)", TLS: c.tls, EntryPoints: c.eps}}, eps, allowed, "", nil)
 			if len(got) != 1 || got[0].URL != c.want {
 				t.Errorf("got %v want %s", got, c.want)
 			}
@@ -251,7 +252,7 @@ func TestBuildTilesProperties(t *testing.T) {
 	f := func(seed int64) bool {
 		rng := rand.New(rand.NewSource(seed))
 		routers, eps, allowed, def := genRouters(rng)
-		tiles := buildTiles(routers, eps, allowed, def)
+		tiles := buildTiles(routers, eps, allowed, def, nil)
 
 		byName := map[string]router{}
 		want := 0
@@ -278,7 +279,7 @@ func TestBuildTilesProperties(t *testing.T) {
 
 		rev := slices.Clone(routers)
 		slices.Reverse(rev)
-		if !slices.Equal(tiles, buildTiles(rev, eps, allowed, def)) {
+		if !slices.Equal(tiles, buildTiles(rev, eps, allowed, def, nil)) {
 			t.Logf("seed %d: depends on input order", seed)
 			return false
 		}
@@ -523,5 +524,89 @@ func TestHandlerRenderErrorIsNotPartial(t *testing.T) {
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 	if rec.Code != http.StatusInternalServerError || strings.Contains(rec.Body.String(), "partial") {
 		t.Errorf("got %d %q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestBuildTilesExclude(t *testing.T) {
+	eps := []entryPoint{{"web", ":80"}}
+	mk := func(names ...string) []router {
+		var rs []router
+		for _, n := range names {
+			rs = append(rs, router{Name: n, Rule: "Host(`x.com`)", EntryPoints: []string{"web"}})
+		}
+		return rs
+	}
+	titles := func(ts []tile) []string {
+		var out []string
+		for _, tl := range ts {
+			out = append(out, tl.Title)
+		}
+		return out
+	}
+	cases := []struct {
+		name    string
+		pattern string
+		want    []string
+	}{
+		{"substring", "dash", []string{"api", "web"}},
+		{"provider suffix", "@file$", []string{"api", "dashboard", "dashboard-2"}},
+		{"anchored", "^dashboard@docker$", []string{"api", "dashboard", "dashboard-2", "web"}},
+		{"alternation", "^(api|web)@", []string{"dashboard", "dashboard", "dashboard-2"}},
+		{"match all", ".", nil},
+		{"match none", "^$", []string{"api", "dashboard", "dashboard", "dashboard-2", "web"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := titles(buildTiles(mk("api@docker", "dashboard@docker", "dashboard@file", "dashboard-2@docker", "web@file"), eps, []string{"web"}, "", regexp.MustCompile(c.pattern)))
+			if !slices.Equal(got, c.want) {
+				t.Errorf("got %v want %v", got, c.want)
+			}
+		})
+	}
+}
+
+func TestBuildTilesExcludeProperties(t *testing.T) {
+	re := regexp.MustCompile(`[02468]@`)
+	f := func(seed int64) bool {
+		rng := rand.New(rand.NewSource(seed))
+		routers, eps, allowed, def := genRouters(rng)
+		var kept []router
+		for _, r := range routers {
+			if !re.MatchString(r.Name) {
+				kept = append(kept, r)
+			}
+		}
+		return slices.Equal(buildTiles(routers, eps, allowed, def, re), buildTiles(kept, eps, allowed, def, nil)) &&
+			slices.Equal(buildTiles(routers, eps, allowed, def, nil), buildTiles(routers, eps, allowed, def, regexp.MustCompile(`^$`)))
+	}
+	if err := quick.Check(f, &quick.Config{MaxCount: 2000}); err != nil {
+		t.Error(err)
+	}
+}
+
+func TestConfigExcludeRoutes(t *testing.T) {
+	env := func(v string) func(string) string {
+		return func(k string) string {
+			switch k {
+			case "ENTRYPOINTS":
+				return "web"
+			case "EXCLUDE_ROUTES":
+				return v
+			}
+			return ""
+		}
+	}
+	for _, bad := range []string{"(", "[a-", `\`, "*", "a{2,1}"} {
+		if _, err := configFromEnv(env(bad)); err == nil {
+			t.Errorf("expected error for EXCLUDE_ROUTES=%q", bad)
+		}
+	}
+	cfg, err := configFromEnv(env(""))
+	if err != nil || cfg.ExcludeRoutes != nil {
+		t.Errorf("empty: %+v %v", cfg, err)
+	}
+	cfg, err = configFromEnv(env("^a@"))
+	if err != nil || cfg.ExcludeRoutes == nil || !cfg.ExcludeRoutes.MatchString("a@docker") {
+		t.Errorf("valid: %+v %v", cfg, err)
 	}
 }
