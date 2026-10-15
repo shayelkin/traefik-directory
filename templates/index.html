@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Services</title>
+<style>
+:root{color-scheme:light dark;--bg:#f4f5f7;--fg:#1c1e21;--muted:#6b7280;--tile:#fff;--accent:#2563eb}
+@media(prefers-color-scheme:dark){:root{--bg:#15171a;--fg:#e6e8eb;--muted:#9aa1ab;--tile:#22262b;--accent:#60a5fa}}
+*{box-sizing:border-box}
+body{margin:0;padding:2.5rem 1.25rem;background:var(--bg);color:var(--fg);font:18px system-ui,sans-serif}
+.list{display:flex;flex-direction:column;gap:1.25rem;max-width:42rem;margin:0 auto}
+.tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.35rem;min-height:6.5rem;padding:1.5rem 2rem;border-radius:1.25rem;background:var(--tile);color:var(--fg);text-decoration:none;text-align:center;box-shadow:0 2px 8px #0003;transition:transform .12s,box-shadow .12s}
+a.tile:hover,a.tile:focus-visible{transform:translateY(-3px) scale(1.01);box-shadow:0 6px 16px #0004;outline:2px solid var(--accent)}
+div.tile{border:2px dashed var(--muted)}
+.title{font-size:1.5rem;font-weight:700;overflow-wrap:anywhere}
+.sub{font-size:.95rem;color:var(--muted);overflow-wrap:anywhere}
+.err{color:#dc2626;text-align:center}
+</style></head><body>
+{{if .Err}}<p class="err">{{.Err}}</p>{{end}}
+<main class="list">{{range .Tiles}}{{if .URL}}<a class="tile" href="{{.URL}}"><span class="title">{{.Title}}</span><span class="sub">{{.Subtitle}}</span></a>{{else}}<div class="tile"><span class="title">{{.Title}}</span><span class="sub">{{.Subtitle}}</span></div>{{end}}{{else}}{{if not .Err}}<p>No matching routes.</p>{{end}}{{end}}</main>
+</body></html>
