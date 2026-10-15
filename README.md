@@ -24,6 +24,7 @@ This software was written with assistance from the following AI models:
 
 * Claude Sonnet 5.5 (Anthropic)
 * Claude Opus 5.5 (Anthropic)
+* GPT-6-Luna (OpenAI)
 
 ## License
 

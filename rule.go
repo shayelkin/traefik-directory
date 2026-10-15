@@ -162,21 +162,23 @@ func (p *parser) str() (string, error) {
 		p.i += end + 1
 		return out, nil
 	case '"':
-		var b strings.Builder
+		start := p.i - 1
 		for p.i < len(p.s) {
 			c := p.s[p.i]
 			p.i++
-			switch c {
-			case '"':
-				return b.String(), nil
-			case '\\':
+			if c == '\\' {
 				if p.i >= len(p.s) {
 					return "", fmt.Errorf("unterminated string")
 				}
-				b.WriteByte(p.s[p.i])
 				p.i++
-			default:
-				b.WriteByte(c)
+				continue
+			}
+			if c == '"' {
+				out, err := strconv.Unquote(p.s[start:p.i])
+				if err != nil {
+					return "", fmt.Errorf("invalid quoted string: %w", err)
+				}
+				return out, nil
 			}
 		}
 		return "", fmt.Errorf("unterminated string")
